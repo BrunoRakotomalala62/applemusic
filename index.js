@@ -48,20 +48,24 @@ const cleanupOldFiles = () => {
 
 app.get('/recherche', async (req, res) => {
   const searchQuery = req.query.video;
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 20));
 
   if (!searchQuery) {
     return res.status(400).json({
       error: 'Paramètre "video" requis',
-      exemple: '/recherche?video=Ambondrona'
+      exemple: '/recherche?video=Ambondrona&page=1'
     });
   }
 
   try {
     const baseUrl = getBaseUrl(req);
-    const apiUrl = `https://api.dailymotion.com/videos?search=${encodeURIComponent(searchQuery)}&fields=id,title,url,thumbnail_480_url,owner.screenname&limit=20`;
+    const apiUrl = `https://api.dailymotion.com/videos?search=${encodeURIComponent(searchQuery)}&fields=id,title,url,thumbnail_480_url,owner.screenname&limit=${limit}&page=${page}`;
     
     const response = await axios.get(apiUrl);
     const videos = response.data.list;
+    const hasMore = response.data.has_more || false;
+    const total = response.data.total || videos.length;
 
     const resultats = videos.map(video => ({
       nom: video['owner.screenname'] || 'Inconnu',
@@ -71,9 +75,19 @@ app.get('/recherche', async (req, res) => {
       download_url: `${baseUrl}/download?url_video=${encodeURIComponent(video.url)}&qualite=${QUALITE_DEFAUT}p`
     }));
 
+    const totalPages = Math.ceil(total / limit);
+
     res.json({
       recherche: searchQuery,
-      total: resultats.length,
+      pagination: {
+        page_actuelle: page,
+        resultats_par_page: limit,
+        total_resultats: total,
+        total_pages: totalPages,
+        a_plus_de_resultats: hasMore,
+        page_suivante: hasMore ? `${baseUrl}/recherche?video=${encodeURIComponent(searchQuery)}&page=${page + 1}&limit=${limit}` : null,
+        page_precedente: page > 1 ? `${baseUrl}/recherche?video=${encodeURIComponent(searchQuery)}&page=${page - 1}&limit=${limit}` : null
+      },
       base_url: baseUrl,
       qualites_disponibles: QUALITES_DISPONIBLES.map(q => q === 'auto' ? 'auto' : `${q}p`),
       videos: resultats
