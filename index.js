@@ -25,8 +25,15 @@ if (!fs.existsSync(TEMP_DIR)) {
 }
 
 const getBaseUrl = (req) => {
-  const domain = process.env.REPLIT_DEV_DOMAIN || process.env.REPLIT_DOMAINS || req.get('host');
-  const protocol = req.protocol === 'https' || domain.includes('replit') ? 'https' : 'http';
+  const domain = process.env.RAILWAY_PUBLIC_DOMAIN || 
+                 process.env.REPLIT_DEV_DOMAIN || 
+                 process.env.REPLIT_DOMAINS || 
+                 req.get('host');
+  const isSecure = req.protocol === 'https' || 
+                   domain.includes('replit') || 
+                   domain.includes('railway') ||
+                   domain.includes('up.railway.app');
+  const protocol = isSecure ? 'https' : 'http';
   return `${protocol}://${domain}`;
 };
 
@@ -339,8 +346,25 @@ app.get('/', (req, res) => {
   });
 });
 
-app.listen(PORT, '0.0.0.0', () => {
+const server = app.listen(PORT, '0.0.0.0', () => {
+  const domain = process.env.RAILWAY_PUBLIC_DOMAIN || process.env.REPLIT_DEV_DOMAIN || `localhost:${PORT}`;
   console.log(`Serveur démarré sur le port ${PORT}`);
-  console.log(`Base URL: https://${process.env.REPLIT_DEV_DOMAIN || 'localhost:' + PORT}`);
+  console.log(`Base URL: https://${domain}`);
   console.log(`Qualité par défaut: ${QUALITE_DEFAUT}p`);
+});
+
+process.on('SIGTERM', () => {
+  console.log('SIGTERM reçu, arrêt gracieux...');
+  server.close(() => {
+    console.log('Serveur arrêté');
+    process.exit(0);
+  });
+});
+
+process.on('SIGINT', () => {
+  console.log('SIGINT reçu, arrêt gracieux...');
+  server.close(() => {
+    console.log('Serveur arrêté');
+    process.exit(0);
+  });
 });
