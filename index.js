@@ -9,6 +9,8 @@ const PORT = process.env.PORT || 5000;
 
 const QUALITES_DISPONIBLES = ['1080', '720', '480', '380', '360', '240', 'auto'];
 const QUALITE_DEFAUT = '360';
+const TYPES_DISPONIBLES = ['MP4', 'MP3'];
+const TYPE_DEFAUT = 'MP4';
 const TEMP_DIR = '/tmp/videos';
 
 let ffmpegAvailable = false;
@@ -46,6 +48,12 @@ const normalizeQuality = (qualite) => {
   if (!qualite) return QUALITE_DEFAUT;
   const q = qualite.replace('p', '').toLowerCase();
   return QUALITES_DISPONIBLES.includes(q) ? q : QUALITE_DEFAUT;
+};
+
+const normalizeType = (type) => {
+  if (!type) return TYPE_DEFAUT;
+  const t = type.toUpperCase();
+  return TYPES_DISPONIBLES.includes(t) ? t : TYPE_DEFAUT;
 };
 
 const cleanupOldFiles = () => {
@@ -121,13 +129,16 @@ app.get('/recherche', async (req, res) => {
 app.get('/download', async (req, res) => {
   const videoUrl = req.query.url_video;
   const qualiteParam = req.query.qualite;
+  const typeParam = req.query.type;
   const qualite = normalizeQuality(qualiteParam);
+  const type = normalizeType(typeParam);
 
   if (!videoUrl) {
     return res.status(400).json({
       error: 'Paramètre "url_video" requis',
-      exemple: '/download?url_video=https://www.dailymotion.com/video/x506tg&qualite=360p',
-      qualites_disponibles: QUALITES_DISPONIBLES.map(q => q === 'auto' ? 'auto' : `${q}p`)
+      exemple: '/download?url_video=https://www.dailymotion.com/video/x506tg&qualite=360p&type=MP4',
+      qualites_disponibles: QUALITES_DISPONIBLES.map(q => q === 'auto' ? 'auto' : `${q}p`),
+      types_disponibles: TYPES_DISPONIBLES
     });
   }
 
@@ -143,7 +154,7 @@ app.get('/download', async (req, res) => {
       });
     }
 
-    console.log(`Téléchargement vidéo: ${videoId}, qualité: ${qualite}`);
+    console.log(`Téléchargement vidéo: ${videoId}, qualité: ${qualite}, type: ${type}`);
 
     const metadataUrl = `https://www.dailymotion.com/player/metadata/video/${videoId}`;
     const metadataResponse = await axios.get(metadataUrl, {
@@ -202,7 +213,8 @@ app.get('/download', async (req, res) => {
 
     const qualityLabel = selectedQuality === 'auto' ? '' : `_${selectedQuality}p`;
     const safeTitle = (metadata.title || videoId).replace(/[^a-zA-Z0-9\-_. ]/g, '_').substring(0, 50);
-    const filename = `${safeTitle}${qualityLabel}.mp4`;
+    const fileExtension = type === 'MP3' ? 'mp3' : 'mp4';
+    const filename = `${safeTitle}${qualityLabel}.${fileExtension}`;
 
     console.log(`Stream URL: ${streamUrl.substring(0, 80)}...`);
 
@@ -211,22 +223,41 @@ app.get('/download', async (req, res) => {
       return res.redirect(streamUrl);
     }
 
-    console.log(`Conversion avec ffmpeg...`);
+    console.log(`Conversion avec ffmpeg en ${type}...`);
 
-    const ffmpegArgs = [
-      '-i', streamUrl,
-      '-c', 'copy',
-      '-bsf:a', 'aac_adtstoasc',
-      '-movflags', 'frag_keyframe+empty_moov',
-      '-f', 'mp4',
-      '-headers', 'Referer: https://www.dailymotion.com/\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36\r\n',
-      '-y',
-      'pipe:1'
-    ];
+    let ffmpegArgs;
+    let contentType;
+
+    if (type === 'MP3') {
+      ffmpegArgs = [
+        '-i', streamUrl,
+        '-vn',
+        '-acodec', 'libmp3lame',
+        '-ab', '192k',
+        '-ar', '44100',
+        '-f', 'mp3',
+        '-headers', 'Referer: https://www.dailymotion.com/\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36\r\n',
+        '-y',
+        'pipe:1'
+      ];
+      contentType = 'audio/mpeg';
+    } else {
+      ffmpegArgs = [
+        '-i', streamUrl,
+        '-c', 'copy',
+        '-bsf:a', 'aac_adtstoasc',
+        '-movflags', 'frag_keyframe+empty_moov',
+        '-f', 'mp4',
+        '-headers', 'Referer: https://www.dailymotion.com/\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36\r\n',
+        '-y',
+        'pipe:1'
+      ];
+      contentType = 'video/mp4';
+    }
 
     const ffmpeg = spawn('ffmpeg', ffmpegArgs);
 
-    res.setHeader('Content-Type', 'video/mp4');
+    res.setHeader('Content-Type', contentType);
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.setHeader('Transfer-Encoding', 'chunked');
 
@@ -307,10 +338,17 @@ app.get('/info', async (req, res) => {
       duration: metadata.duration,
       thumbnail: metadata.poster_url,
       qualites_disponibles: availableQualities,
-      download_urls: availableQualities.map(q => ({
-        qualite: q === 'auto' ? 'auto' : `${q}p`,
-        url: `${baseUrl}/download?url_video=${encodeURIComponent(videoUrl)}&qualite=${q === 'auto' ? 'auto' : q + 'p'}`
-      }))
+      types_disponibles: TYPES_DISPONIBLES,
+      download_urls: {
+        mp4: availableQualities.map(q => ({
+          qualite: q === 'auto' ? 'auto' : `${q}p`,
+          url: `${baseUrl}/download?url_video=${encodeURIComponent(videoUrl)}&qualite=${q === 'auto' ? 'auto' : q + 'p'}&type=MP4`
+        })),
+        mp3: availableQualities.map(q => ({
+          qualite: q === 'auto' ? 'auto' : `${q}p`,
+          url: `${baseUrl}/download?url_video=${encodeURIComponent(videoUrl)}&qualite=${q === 'auto' ? 'auto' : q + 'p'}&type=MP3`
+        }))
+      }
     });
 
   } catch (error) {
@@ -329,14 +367,18 @@ app.get('/', (req, res) => {
     base_url: baseUrl,
     qualites_disponibles: QUALITES_DISPONIBLES.map(q => q === 'auto' ? 'auto' : `${q}p`),
     qualite_defaut: `${QUALITE_DEFAUT}p`,
+    types_disponibles: TYPES_DISPONIBLES,
+    type_defaut: TYPE_DEFAUT,
     routes: {
       recherche: {
         url: '/recherche?video=NomARechercher',
         exemple: `${baseUrl}/recherche?video=Ambondrona`
       },
       download: {
-        url: '/download?url_video=URLDeLaVideo&qualite=360p',
-        exemple: `${baseUrl}/download?url_video=https://www.dailymotion.com/video/x506tg&qualite=720p`
+        url: '/download?url_video=URLDeLaVideo&qualite=360p&type=MP4',
+        description: 'type=MP4 pour vidéo, type=MP3 pour audio',
+        exemple_mp4: `${baseUrl}/download?url_video=https://www.dailymotion.com/video/x506tg&qualite=720p&type=MP4`,
+        exemple_mp3: `${baseUrl}/download?url_video=https://www.dailymotion.com/video/x506tg&qualite=360p&type=MP3`
       },
       info: {
         url: '/info?url_video=URLDeLaVideo',
