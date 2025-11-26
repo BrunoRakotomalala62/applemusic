@@ -88,7 +88,8 @@ async function scrapeAlbumTracks(albumUrl) {
                 tracks.push({
                   position: item.position || index + 1,
                   name: item.item.name,
-                  duration: item.item.duration || ''
+                  duration: item.item.duration || '',
+                  audioUrl: item.item.url || ''
                 });
               }
             });
@@ -98,7 +99,7 @@ async function scrapeAlbumTracks(albumUrl) {
     });
     
     if (tracks.length === 0) {
-      const trackRegex = /"@type":"MusicRecording","name":"([^"]+)","duration":"([^"]+)"/g;
+      const trackRegex = /"@type":"MusicRecording","name":"([^"]+)","duration":"([^"]+)","url":"([^"]+)"/g;
       let match;
       let position = 1;
       const seenTracks = new Set();
@@ -110,7 +111,8 @@ async function scrapeAlbumTracks(albumUrl) {
           tracks.push({
             position: position++,
             name: trackName,
-            duration: match[2]
+            duration: match[2],
+            audioUrl: match[3]
           });
         }
       }
@@ -349,8 +351,6 @@ app.get('/album', async (req, res) => {
         text-align: center;
       }
       .track-item {
-        display: flex;
-        align-items: center;
         padding: 15px;
         background: #2a2a2a;
         border-radius: 8px;
@@ -358,6 +358,11 @@ app.get('/album', async (req, res) => {
         transition: background 0.3s;
       }
       .track-item:hover { background: #3a3a3a; }
+      .track-header {
+        display: flex;
+        align-items: center;
+        margin-bottom: 8px;
+      }
       .track-number {
         width: 40px;
         font-size: 1.1rem;
@@ -371,6 +376,20 @@ app.get('/album', async (req, res) => {
       .track-duration {
         color: #888;
         font-size: 0.9rem;
+      }
+      .track-audio-url {
+        font-size: 0.75rem;
+        color: #666;
+        word-break: break-all;
+        padding-left: 40px;
+        margin-top: 5px;
+      }
+      .track-audio-url a {
+        color: #fa233b;
+        text-decoration: none;
+      }
+      .track-audio-url a:hover {
+        text-decoration: underline;
       }
     </style>
   </head>
@@ -391,9 +410,14 @@ app.get('/album', async (req, res) => {
   albumData.tracks.forEach(track => {
     html += `
       <div class="track-item">
-        <span class="track-number">${track.position}</span>
-        <span class="track-name">${track.name}</span>
-        <span class="track-duration">${formatDuration(track.duration)}</span>
+        <div class="track-header">
+          <span class="track-number">${track.position}</span>
+          <span class="track-name">${track.name}</span>
+          <span class="track-duration">${formatDuration(track.duration)}</span>
+        </div>
+        <div class="track-audio-url">
+          <strong>url_audio:</strong> <a href="${track.audioUrl}" target="_blank">${track.audioUrl}</a>
+        </div>
       </div>
     `;
   });
