@@ -199,84 +199,11 @@ app.get('/recherche', (req, res) => {
   
   if (appParam === 'liste') {
     const albums = parseAlbums();
-    
-    let html = `
-    <!DOCTYPE html>
-    <html lang="fr">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Liste des Albums - Apple Music</title>
-      <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-          background: #1a1a1a;
-          min-height: 100vh;
-          color: white;
-          padding: 20px;
-        }
-        h1 { text-align: center; margin-bottom: 30px; color: #fa233b; }
-        .albums-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-          gap: 20px;
-          max-width: 1200px;
-          margin: 0 auto;
-        }
-        .album-card {
-          background: #2a2a2a;
-          border-radius: 10px;
-          overflow: hidden;
-          transition: transform 0.3s;
-        }
-        .album-card:hover { transform: scale(1.05); }
-        .album-image { width: 100%; aspect-ratio: 1; object-fit: cover; }
-        .album-info { padding: 15px; }
-        .album-title {
-          font-size: 1rem;
-          font-weight: 600;
-          margin-bottom: 5px;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-        .album-artist {
-          font-size: 0.85rem;
-          color: #888;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-        .back-link {
-          display: block;
-          text-align: center;
-          margin-bottom: 20px;
-          color: #fa233b;
-          text-decoration: none;
-        }
-      </style>
-    </head>
-    <body>
-      <a href="/" class="back-link">Retour</a>
-      <h1>Albums Apple Music</h1>
-      <div class="albums-grid">
-    `;
-    
-    albums.forEach(album => {
-      html += `
-        <div class="album-card">
-          <img src="${album.imageUrl}" alt="${album.title}" class="album-image" onerror="this.src='https://via.placeholder.com/300?text=No+Image'">
-          <div class="album-info">
-            <div class="album-title">${album.title}</div>
-            <div class="album-artist">${album.artist}</div>
-          </div>
-        </div>
-      `;
-    });
-    
-    html += `</div></body></html>`;
-    res.send(html);
+    const result = albums.map(album => ({
+      titre: album.title,
+      imageUrl: album.imageUrl
+    }));
+    res.json(result);
   } else {
     res.json({ error: 'Parametre app=liste requis' });
   }
