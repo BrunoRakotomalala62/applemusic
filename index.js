@@ -448,6 +448,14 @@ app.get('/', (req, res) => {
             <div class="endpoint">GET /api/album?url={apple_music_url}</div>
             <p><strong>Retourne:</strong> JSON avec albumTitle, artistName, tracks[]</p>
           </div>
+          
+          <div class="card">
+            <span class="card-icon">⬇️</span>
+            <h2>Telecharger MP3</h2>
+            <p>Telechargez directement les fichiers audio vers votre telephone ou ordinateur.</p>
+            <div class="endpoint">GET /download?url_audio={audio_url}</div>
+            <p><strong>Action:</strong> Lance le telechargement du fichier MP3/M4A</p>
+          </div>
         </div>
         
         <div class="links-section">
@@ -592,6 +600,27 @@ app.get('/album', async (req, res) => {
       .track-audio-url a:hover {
         text-decoration: underline;
       }
+      .track-download {
+        padding-left: 40px;
+        margin-top: 10px;
+      }
+      .download-btn {
+        display: inline-block;
+        padding: 8px 16px;
+        background: linear-gradient(135deg, #00c853, #00e676);
+        color: #fff;
+        text-decoration: none;
+        border-radius: 25px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(0,200,83,0.4);
+      }
+      .download-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(0,200,83,0.6);
+        background: linear-gradient(135deg, #00e676, #69f0ae);
+      }
     </style>
   </head>
   <body>
@@ -608,7 +637,10 @@ app.get('/album', async (req, res) => {
       <h2 class="tracks-title">Liste des titres (${albumData.tracks.length} pistes)</h2>
   `;
   
+  const baseUrl = `https://${process.env.REPLIT_DEV_DOMAIN || process.env.REPLIT_DOMAINS || 'localhost:5000'}`;
+  
   albumData.tracks.forEach(track => {
+    const downloadUrl = `${baseUrl}/download?url_audio=${encodeURIComponent(track.audioUrl)}`;
     html += `
       <div class="track-item">
         <div class="track-header">
@@ -618,6 +650,9 @@ app.get('/album', async (req, res) => {
         </div>
         <div class="track-audio-url">
           <strong>url_audio:</strong> <a href="${track.audioUrl}" target="_blank">${track.audioUrl}</a>
+        </div>
+        <div class="track-download">
+          <a href="${downloadUrl}" class="download-btn">⬇️ Telecharger MP3</a>
         </div>
       </div>
     `;
@@ -647,6 +682,81 @@ app.get('/api/status', (req, res) => {
 app.get('/api/albums', (req, res) => {
   const albums = parseAlbums();
   res.json(albums);
+});
+
+function getBaseUrl(req) {
+  const domain = process.env.REPLIT_DEV_DOMAIN || process.env.REPLIT_DOMAINS || req.get('host');
+  const protocol = req.protocol || 'https';
+  return `${protocol}://${domain}`;
+}
+
+app.get('/download', async (req, res) => {
+  const audioUrl = req.query.url_audio;
+  
+  if (!audioUrl) {
+    return res.status(400).json({ 
+      error: 'Parametre url_audio requis',
+      exemple: '/download?url_audio=https://music.apple.com/...',
+      base_url: getBaseUrl(req)
+    });
+  }
+  
+  try {
+    console.log('Telechargement audio:', audioUrl);
+    
+    const response = await axios({
+      method: 'GET',
+      url: audioUrl,
+      responseType: 'stream',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Accept': 'audio/*,*/*',
+        'Referer': 'https://music.apple.com/'
+      },
+      timeout: 30000
+    });
+    
+    const urlParts = audioUrl.split('/');
+    let filename = urlParts[urlParts.length - 1].split('?')[0] || 'audio.mp3';
+    if (!filename.endsWith('.mp3') && !filename.endsWith('.m4a') && !filename.endsWith('.aac')) {
+      filename = 'audio.mp3';
+    }
+    
+    const contentType = response.headers['content-type'] || 'audio/mpeg';
+    const contentLength = response.headers['content-length'];
+    
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    if (contentLength) {
+      res.setHeader('Content-Length', contentLength);
+    }
+    res.setHeader('Cache-Control', 'no-cache');
+    
+    response.data.pipe(res);
+    
+    response.data.on('error', (err) => {
+      console.error('Erreur streaming:', err.message);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Erreur lors du streaming audio' });
+      }
+    });
+    
+  } catch (error) {
+    console.error('Erreur telechargement:', error.message);
+    res.status(500).json({ 
+      error: 'Impossible de telecharger le fichier audio',
+      details: error.message,
+      url_attempted: audioUrl
+    });
+  }
+});
+
+app.get('/api/base-url', (req, res) => {
+  res.json({
+    base_url: getBaseUrl(req),
+    download_endpoint: `${getBaseUrl(req)}/download?url_audio=`,
+    exemple: `${getBaseUrl(req)}/download?url_audio=https://audio-ssl.itunes.apple.com/...`
+  });
 });
 
 app.listen(PORT, '0.0.0.0', () => {
