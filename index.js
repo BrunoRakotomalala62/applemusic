@@ -1,28 +1,56 @@
+const express = require('express');
 const axios = require('axios');
-const fs = require('fs');
 
-// URL du site à scraper
-const url = 'https://www.dailymotion.com/search/Ambondrona/top-results';
+const app = express();
+const PORT = 5000;
 
-// Fonction asynchrone pour récupérer et sauvegarder le HTML
-async function scrapeWebsite() {
-try {
-// Envoyer une requête GET à l'URL
-console.log('Récupération du contenu HTML...');
-const response = await axios.get(url);
+app.get('/recherche', async (req, res) => {
+  const searchQuery = req.query.video;
 
-// Récupérer le contenu HTML
-const htmlContent = response.data;
+  if (!searchQuery) {
+    return res.status(400).json({
+      error: 'Paramètre "video" requis',
+      exemple: '/recherche?video=Ambondrona'
+    });
+  }
 
-// Enregistrer le contenu dans un fichier
-console.log('Enregistrement du HTML dans web.html...');
-fs.writeFileSync('web.html', htmlContent);
+  try {
+    const apiUrl = `https://api.dailymotion.com/videos?search=${encodeURIComponent(searchQuery)}&fields=id,title,url,thumbnail_480_url,owner.screenname&limit=20`;
+    
+    const response = await axios.get(apiUrl);
+    const videos = response.data.list;
 
-console.log('Le contenu HTML a été enregistré avec succès dans web.html');
-} catch (error) {
-console.error('Une erreur est survenue:', error.message);
-}
-}
+    const resultats = videos.map(video => ({
+      nom: video['owner.screenname'] || 'Inconnu',
+      titre: video.title,
+      image_url: video.thumbnail_480_url,
+      video_url: video.url
+    }));
 
-// Exécuter la fonction
-scrapeWebsite();
+    res.json({
+      recherche: searchQuery,
+      total: resultats.length,
+      videos: resultats
+    });
+
+  } catch (error) {
+    console.error('Erreur lors de la recherche:', error.message);
+    res.status(500).json({
+      error: 'Erreur lors de la recherche',
+      message: error.message
+    });
+  }
+});
+
+app.get('/', (req, res) => {
+  res.json({
+    message: 'API de recherche Dailymotion',
+    usage: '/recherche?video=NomARechercher',
+    exemple: '/recherche?video=Ambondrona'
+  });
+});
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Serveur démarré sur le port ${PORT}`);
+  console.log(`Exemple: http://localhost:${PORT}/recherche?video=Ambondrona`);
+});
