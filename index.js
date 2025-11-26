@@ -1,11 +1,19 @@
 const express = require('express');
 const axios = require('axios');
+const { spawn } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
 const PORT = 5000;
 
 const QUALITES_DISPONIBLES = ['1080', '720', '480', '380', '360', '240', 'auto'];
 const QUALITE_DEFAUT = '360';
+const TEMP_DIR = '/tmp/videos';
+
+if (!fs.existsSync(TEMP_DIR)) {
+  fs.mkdirSync(TEMP_DIR, { recursive: true });
+}
 
 const getBaseUrl = (req) => {
   const domain = process.env.REPLIT_DEV_DOMAIN || process.env.REPLIT_DOMAINS || req.get('host');
@@ -22,6 +30,20 @@ const normalizeQuality = (qualite) => {
   if (!qualite) return QUALITE_DEFAUT;
   const q = qualite.replace('p', '').toLowerCase();
   return QUALITES_DISPONIBLES.includes(q) ? q : QUALITE_DEFAUT;
+};
+
+const cleanupOldFiles = () => {
+  try {
+    const files = fs.readdirSync(TEMP_DIR);
+    const now = Date.now();
+    files.forEach(file => {
+      const filePath = path.join(TEMP_DIR, file);
+      const stats = fs.statSync(filePath);
+      if (now - stats.mtimeMs > 10 * 60 * 1000) {
+        fs.unlinkSync(filePath);
+      }
+    });
+  } catch (e) {}
 };
 
 app.get('/recherche', async (req, res) => {
@@ -80,6 +102,8 @@ app.get('/download', async (req, res) => {
   }
 
   try {
+    cleanupOldFiles();
+    
     const videoId = extractVideoId(videoUrl);
     
     if (!videoId) {
@@ -89,10 +113,14 @@ app.get('/download', async (req, res) => {
       });
     }
 
+    console.log(`Téléchargement vidéo: ${videoId}, qualité: ${qualite}`);
+
     const metadataUrl = `https://www.dailymotion.com/player/metadata/video/${videoId}`;
     const metadataResponse = await axios.get(metadataUrl, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://www.dailymotion.com/',
+        'Origin': 'https://www.dailymotion.com'
       }
     });
 
@@ -106,18 +134,17 @@ app.get('/download', async (req, res) => {
       });
     }
 
-    let downloadUrl = null;
+    let streamUrl = null;
     let selectedQuality = null;
 
     const findStreamForQuality = (q) => {
       if (qualities[q] && qualities[q].length > 0) {
         const streams = qualities[q];
         for (const stream of streams) {
-          if (stream.type === 'video/mp4' && stream.url) {
-            return { url: stream.url, quality: q };
+          if (stream.url) {
+            return { url: stream.url, quality: q, type: stream.type };
           }
         }
-        return { url: streams[0].url, quality: q };
       }
       return null;
     };
@@ -140,21 +167,70 @@ app.get('/download', async (req, res) => {
       });
     }
 
-    downloadUrl = result.url;
+    streamUrl = result.url;
     selectedQuality = result.quality;
 
     const qualityLabel = selectedQuality === 'auto' ? '' : `_${selectedQuality}p`;
-    const filename = `${metadata.title || videoId}${qualityLabel}.mp4`.replace(/[^a-zA-Z0-9\-_.]/g, '_');
+    const safeTitle = (metadata.title || videoId).replace(/[^a-zA-Z0-9\-_. ]/g, '_').substring(0, 50);
+    const filename = `${safeTitle}${qualityLabel}.mp4`;
+    const outputPath = path.join(TEMP_DIR, `${videoId}_${Date.now()}.mp4`);
 
+    console.log(`Stream URL: ${streamUrl.substring(0, 80)}...`);
+    console.log(`Conversion avec ffmpeg vers: ${outputPath}`);
+
+    const ffmpegArgs = [
+      '-i', streamUrl,
+      '-c', 'copy',
+      '-bsf:a', 'aac_adtstoasc',
+      '-movflags', 'frag_keyframe+empty_moov',
+      '-f', 'mp4',
+      '-headers', 'Referer: https://www.dailymotion.com/\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36\r\n',
+      '-y',
+      'pipe:1'
+    ];
+
+    const ffmpeg = spawn('ffmpeg', ffmpegArgs);
+
+    res.setHeader('Content-Type', 'video/mp4');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.redirect(downloadUrl);
+    res.setHeader('Transfer-Encoding', 'chunked');
+
+    ffmpeg.stdout.pipe(res);
+
+    ffmpeg.stderr.on('data', (data) => {
+      const msg = data.toString();
+      if (msg.includes('time=') || msg.includes('frame=')) {
+        process.stdout.write('.');
+      }
+    });
+
+    ffmpeg.on('error', (err) => {
+      console.error('Erreur ffmpeg:', err.message);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Erreur lors de la conversion' });
+      }
+    });
+
+    ffmpeg.on('close', (code) => {
+      console.log(`\nffmpeg terminé avec code: ${code}`);
+      if (code !== 0 && !res.headersSent) {
+        res.status(500).json({ error: 'Erreur lors du téléchargement' });
+      }
+    });
+
+    req.on('close', () => {
+      ffmpeg.kill('SIGTERM');
+    });
 
   } catch (error) {
     console.error('Erreur lors du téléchargement:', error.message);
-    res.status(500).json({
-      error: 'Erreur lors du téléchargement',
-      message: error.message
-    });
+    
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: 'Erreur lors du téléchargement',
+        message: error.message
+      });
+    }
   }
 });
 
@@ -180,7 +256,8 @@ app.get('/info', async (req, res) => {
     const metadataUrl = `https://www.dailymotion.com/player/metadata/video/${videoId}`;
     const metadataResponse = await axios.get(metadataUrl, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://www.dailymotion.com/'
       }
     });
 
