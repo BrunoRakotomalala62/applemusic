@@ -1,15 +1,24 @@
 const express = require('express');
 const axios = require('axios');
-const { spawn } = require('child_process');
+const { spawn, execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
 const app = express();
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
 
 const QUALITES_DISPONIBLES = ['1080', '720', '480', '380', '360', '240', 'auto'];
 const QUALITE_DEFAUT = '360';
 const TEMP_DIR = '/tmp/videos';
+
+let ffmpegAvailable = false;
+try {
+  execSync('ffmpeg -version', { stdio: 'ignore' });
+  ffmpegAvailable = true;
+  console.log('ffmpeg est disponible');
+} catch (e) {
+  console.warn('ATTENTION: ffmpeg non disponible - le téléchargement direct sera utilisé');
+}
 
 if (!fs.existsSync(TEMP_DIR)) {
   fs.mkdirSync(TEMP_DIR, { recursive: true });
@@ -187,10 +196,15 @@ app.get('/download', async (req, res) => {
     const qualityLabel = selectedQuality === 'auto' ? '' : `_${selectedQuality}p`;
     const safeTitle = (metadata.title || videoId).replace(/[^a-zA-Z0-9\-_. ]/g, '_').substring(0, 50);
     const filename = `${safeTitle}${qualityLabel}.mp4`;
-    const outputPath = path.join(TEMP_DIR, `${videoId}_${Date.now()}.mp4`);
 
     console.log(`Stream URL: ${streamUrl.substring(0, 80)}...`);
-    console.log(`Conversion avec ffmpeg vers: ${outputPath}`);
+
+    if (!ffmpegAvailable) {
+      console.log('ffmpeg non disponible - redirection vers le stream direct');
+      return res.redirect(streamUrl);
+    }
+
+    console.log(`Conversion avec ffmpeg...`);
 
     const ffmpegArgs = [
       '-i', streamUrl,
