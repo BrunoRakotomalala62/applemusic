@@ -40,7 +40,39 @@ const getBaseUrl = (req) => {
 };
 
 const extractVideoId = (url) => {
-  const match = url.match(/video\/([a-zA-Z0-9]+)/);
+  let cleanUrl = url;
+  
+  // Décoder l'URL si elle est encodée
+  try {
+    let decodedUrl = decodeURIComponent(url);
+    // Décoder plusieurs fois si nécessaire (double encodage)
+    while (decodedUrl !== cleanUrl && decodedUrl.includes('%')) {
+      cleanUrl = decodedUrl;
+      decodedUrl = decodeURIComponent(cleanUrl);
+    }
+    cleanUrl = decodedUrl;
+  } catch (e) {
+    // Si le décodage échoue, utiliser l'URL originale
+  }
+  
+  // Si l'URL contient un paramètre url_video imbriqué (URL d'API passée par erreur)
+  const nestedUrlMatch = cleanUrl.match(/url_video=([^&]+)/);
+  if (nestedUrlMatch) {
+    try {
+      let nestedUrl = decodeURIComponent(nestedUrlMatch[1]);
+      // Décoder plusieurs fois si nécessaire
+      while (nestedUrl.includes('%2F') || nestedUrl.includes('%3A')) {
+        nestedUrl = decodeURIComponent(nestedUrl);
+      }
+      // Vérifier si l'URL imbriquée est une URL Dailymotion valide
+      if (nestedUrl.includes('dailymotion.com/video/')) {
+        cleanUrl = nestedUrl;
+      }
+    } catch (e) {}
+  }
+  
+  // Extraire l'ID de la vidéo
+  const match = cleanUrl.match(/video\/([a-zA-Z0-9]+)/);
   return match ? match[1] : null;
 };
 
