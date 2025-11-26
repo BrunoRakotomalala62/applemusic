@@ -452,9 +452,9 @@ app.get('/', (req, res) => {
           <div class="card">
             <span class="card-icon">⬇️</span>
             <h2>Telecharger MP3</h2>
-            <p>Telechargez directement les fichiers audio vers votre telephone ou ordinateur.</p>
-            <div class="endpoint">GET /download?url_audio={audio_url}</div>
-            <p><strong>Action:</strong> Lance le telechargement du fichier MP3/M4A</p>
+            <p>Telechargez les fichiers audio (fonctionne avec des URLs audio directes, pas Apple Music car protege par DRM).</p>
+            <div class="endpoint">GET /download?url_audio={direct_audio_url}</div>
+            <p><strong>Note:</strong> Apple Music = streaming protege, pas de telechargement direct</p>
           </div>
         </div>
         
@@ -621,6 +621,14 @@ app.get('/album', async (req, res) => {
         box-shadow: 0 6px 20px rgba(0,200,83,0.6);
         background: linear-gradient(135deg, #00e676, #69f0ae);
       }
+      .apple-btn {
+        background: linear-gradient(135deg, #fa233b, #ff6b6b);
+        box-shadow: 0 4px 15px rgba(250,35,59,0.4);
+      }
+      .apple-btn:hover {
+        box-shadow: 0 6px 20px rgba(250,35,59,0.6);
+        background: linear-gradient(135deg, #ff6b6b, #fa233b);
+      }
     </style>
   </head>
   <body>
@@ -637,10 +645,7 @@ app.get('/album', async (req, res) => {
       <h2 class="tracks-title">Liste des titres (${albumData.tracks.length} pistes)</h2>
   `;
   
-  const baseUrl = `https://${process.env.REPLIT_DEV_DOMAIN || process.env.REPLIT_DOMAINS || 'localhost:5000'}`;
-  
   albumData.tracks.forEach(track => {
-    const downloadUrl = `${baseUrl}/download?url_audio=${encodeURIComponent(track.audioUrl)}`;
     html += `
       <div class="track-item">
         <div class="track-header">
@@ -652,7 +657,7 @@ app.get('/album', async (req, res) => {
           <strong>url_audio:</strong> <a href="${track.audioUrl}" target="_blank">${track.audioUrl}</a>
         </div>
         <div class="track-download">
-          <a href="${downloadUrl}" class="download-btn">⬇️ Telecharger MP3</a>
+          <a href="${track.audioUrl}" target="_blank" class="download-btn apple-btn">🎵 Ecouter sur Apple Music</a>
         </div>
       </div>
     `;
