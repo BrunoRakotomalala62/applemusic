@@ -164,30 +164,304 @@ app.get('/', (req, res) => {
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Apple Music</title>
+      <title>Apple Music API - Guide d'utilisation</title>
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        @keyframes gradientShift {
+          0% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+          100% { background-position: 0% 50%; }
+        }
+        
+        @keyframes float {
+          0%, 100% { transform: translateY(0px) rotate(0deg); }
+          50% { transform: translateY(-20px) rotate(5deg); }
+        }
+        
+        @keyframes pulse {
+          0%, 100% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(1.1); opacity: 0.8; }
+        }
+        
+        @keyframes slideUp {
+          from { opacity: 0; transform: translateY(30px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        
+        @keyframes shimmer {
+          0% { background-position: -200% center; }
+          100% { background-position: 200% center; }
+        }
+        
+        @keyframes bounce {
+          0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
+          40% { transform: translateY(-10px); }
+          60% { transform: translateY(-5px); }
+        }
+        
         body {
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab, #667eea, #764ba2);
+          background-size: 400% 400%;
+          animation: gradientShift 15s ease infinite;
           min-height: 100vh;
-          display: flex;
-          align-items: center;
-          justify-content: center;
           color: white;
+          overflow-x: hidden;
         }
-        .container { text-align: center; padding: 2rem; max-width: 600px; }
-        h1 { font-size: 3rem; margin-bottom: 1rem; text-shadow: 2px 2px 4px rgba(0,0,0,0.2); }
-        p { font-size: 1.2rem; opacity: 0.9; margin-bottom: 1rem; }
-        a { color: white; }
+        
+        .floating-notes {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          pointer-events: none;
+          overflow: hidden;
+          z-index: 0;
+        }
+        
+        .note {
+          position: absolute;
+          font-size: 2rem;
+          opacity: 0.3;
+          animation: float 6s ease-in-out infinite;
+        }
+        
+        .note:nth-child(1) { left: 10%; top: 20%; animation-delay: 0s; }
+        .note:nth-child(2) { left: 20%; top: 60%; animation-delay: 1s; font-size: 1.5rem; }
+        .note:nth-child(3) { left: 70%; top: 30%; animation-delay: 2s; }
+        .note:nth-child(4) { left: 80%; top: 70%; animation-delay: 3s; font-size: 2.5rem; }
+        .note:nth-child(5) { left: 50%; top: 80%; animation-delay: 4s; }
+        .note:nth-child(6) { left: 5%; top: 85%; animation-delay: 1.5s; font-size: 1.8rem; }
+        .note:nth-child(7) { left: 90%; top: 15%; animation-delay: 2.5s; }
+        .note:nth-child(8) { left: 35%; top: 10%; animation-delay: 3.5s; font-size: 1.2rem; }
+        
+        .container {
+          position: relative;
+          z-index: 1;
+          max-width: 900px;
+          margin: 0 auto;
+          padding: 2rem;
+        }
+        
+        .header {
+          text-align: center;
+          padding: 3rem 0;
+          animation: slideUp 1s ease-out;
+        }
+        
+        .logo {
+          font-size: 5rem;
+          margin-bottom: 1rem;
+          animation: pulse 2s ease-in-out infinite;
+          display: inline-block;
+        }
+        
+        h1 {
+          font-size: 3.5rem;
+          margin-bottom: 0.5rem;
+          text-shadow: 3px 3px 6px rgba(0,0,0,0.3);
+          background: linear-gradient(90deg, #fff, #ffd700, #fff);
+          background-size: 200% auto;
+          -webkit-background-clip: text;
+          background-clip: text;
+          -webkit-text-fill-color: transparent;
+          animation: shimmer 3s linear infinite;
+        }
+        
+        .subtitle {
+          font-size: 1.3rem;
+          opacity: 0.9;
+          margin-bottom: 2rem;
+        }
+        
+        .cards-container {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+          gap: 1.5rem;
+          margin-top: 2rem;
+        }
+        
+        .card {
+          background: rgba(255,255,255,0.15);
+          backdrop-filter: blur(10px);
+          border-radius: 20px;
+          padding: 2rem;
+          border: 1px solid rgba(255,255,255,0.2);
+          transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+          animation: slideUp 1s ease-out backwards;
+        }
+        
+        .card:nth-child(1) { animation-delay: 0.2s; }
+        .card:nth-child(2) { animation-delay: 0.4s; }
+        .card:nth-child(3) { animation-delay: 0.6s; }
+        
+        .card:hover {
+          transform: translateY(-10px) scale(1.02);
+          background: rgba(255,255,255,0.25);
+          box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+        }
+        
+        .card-icon {
+          font-size: 3rem;
+          margin-bottom: 1rem;
+          display: block;
+          animation: bounce 2s ease infinite;
+        }
+        
+        .card h2 {
+          font-size: 1.5rem;
+          margin-bottom: 1rem;
+          color: #ffd700;
+        }
+        
+        .card p {
+          font-size: 1rem;
+          line-height: 1.6;
+          opacity: 0.9;
+          margin-bottom: 1rem;
+        }
+        
+        .endpoint {
+          background: rgba(0,0,0,0.3);
+          padding: 0.8rem 1rem;
+          border-radius: 10px;
+          font-family: 'Monaco', 'Menlo', monospace;
+          font-size: 0.85rem;
+          margin: 0.5rem 0;
+          word-break: break-all;
+          border-left: 4px solid #ffd700;
+        }
+        
+        .btn {
+          display: inline-block;
+          padding: 1rem 2rem;
+          background: linear-gradient(135deg, #ffd700, #ff6b6b);
+          color: #1a1a2e;
+          text-decoration: none;
+          border-radius: 50px;
+          font-weight: bold;
+          font-size: 1rem;
+          transition: all 0.3s ease;
+          box-shadow: 0 5px 20px rgba(255,215,0,0.4);
+          margin: 0.5rem;
+        }
+        
+        .btn:hover {
+          transform: translateY(-3px);
+          box-shadow: 0 10px 30px rgba(255,215,0,0.6);
+        }
+        
+        .btn-secondary {
+          background: linear-gradient(135deg, #23a6d5, #23d5ab);
+        }
+        
+        .btn-secondary:hover {
+          box-shadow: 0 10px 30px rgba(35,166,213,0.6);
+        }
+        
+        .links-section {
+          text-align: center;
+          margin-top: 3rem;
+          padding: 2rem;
+          background: rgba(255,255,255,0.1);
+          border-radius: 20px;
+          animation: slideUp 1s ease-out 0.8s backwards;
+        }
+        
+        .links-section h2 {
+          margin-bottom: 1.5rem;
+          font-size: 1.8rem;
+        }
+        
+        .footer {
+          text-align: center;
+          padding: 2rem;
+          opacity: 0.7;
+          font-size: 0.9rem;
+          margin-top: 2rem;
+        }
+        
+        .tag {
+          display: inline-block;
+          background: rgba(255,215,0,0.3);
+          padding: 0.3rem 0.8rem;
+          border-radius: 20px;
+          font-size: 0.8rem;
+          margin: 0.2rem;
+        }
+        
+        @media (max-width: 600px) {
+          h1 { font-size: 2.5rem; }
+          .logo { font-size: 4rem; }
+          .container { padding: 1rem; }
+          .card { padding: 1.5rem; }
+        }
       </style>
     </head>
     <body>
+      <div class="floating-notes">
+        <span class="note">🎵</span>
+        <span class="note">🎶</span>
+        <span class="note">🎼</span>
+        <span class="note">🎵</span>
+        <span class="note">🎶</span>
+        <span class="note">🎵</span>
+        <span class="note">🎶</span>
+        <span class="note">🎼</span>
+      </div>
+      
       <div class="container">
-        <div style="font-size: 4rem; margin-bottom: 2rem;">🎵</div>
-        <h1>Apple Music</h1>
-        <p>Bienvenue dans votre application musicale</p>
-        <p><a href="/recherche?app=liste">Voir les albums</a></p>
+        <div class="header">
+          <span class="logo">🎵</span>
+          <h1>Apple Music API</h1>
+          <p class="subtitle">Scraper et API pour extraire les donnees d'Apple Music</p>
+          <div>
+            <span class="tag">REST API</span>
+            <span class="tag">JSON</span>
+            <span class="tag">Scraping</span>
+          </div>
+        </div>
+        
+        <div class="cards-container">
+          <div class="card">
+            <span class="card-icon">📋</span>
+            <h2>Liste des Albums</h2>
+            <p>Recuperez la liste des albums recommandes avec leurs titres et images de couverture.</p>
+            <div class="endpoint">GET /recherche?app=liste</div>
+            <p><strong>Retourne:</strong> Array d'objets avec titre et imageUrl</p>
+          </div>
+          
+          <div class="card">
+            <span class="card-icon">💿</span>
+            <h2>Details d'un Album</h2>
+            <p>Obtenez les informations completes d'un album: artiste, image, et liste des pistes avec duree.</p>
+            <div class="endpoint">GET /album?url={apple_music_url}</div>
+            <p><strong>Retourne:</strong> Page HTML avec details de l'album</p>
+          </div>
+          
+          <div class="card">
+            <span class="card-icon">🔌</span>
+            <h2>API JSON Album</h2>
+            <p>Endpoint API pour obtenir les donnees d'un album en format JSON pur.</p>
+            <div class="endpoint">GET /api/album?url={apple_music_url}</div>
+            <p><strong>Retourne:</strong> JSON avec albumTitle, artistName, tracks[]</p>
+          </div>
+        </div>
+        
+        <div class="links-section">
+          <h2>🚀 Essayer Maintenant</h2>
+          <p style="margin-bottom: 1.5rem;">Cliquez sur les liens ci-dessous pour voir l'API en action</p>
+          <a href="/recherche?app=liste" class="btn">📋 Voir les Albums (JSON)</a>
+          <a href="/api/album?url=https://music.apple.com/fr/album/fihirana-ffpm-vol-1/1723344583" class="btn btn-secondary">💿 Exemple Album API</a>
+          <a href="/album?url=https://music.apple.com/fr/album/fihirana-ffpm-vol-1/1723344583" class="btn" style="background: linear-gradient(135deg, #e73c7e, #764ba2);">🎨 Voir Album (HTML)</a>
+        </div>
+        
+        <div class="footer">
+          <p>Apple Music Scraper API - Fait avec ❤️</p>
+          <p style="margin-top: 0.5rem;">Utilisez les endpoints ci-dessus pour integrer les donnees dans vos applications</p>
+        </div>
       </div>
     </body>
     </html>
