@@ -116,18 +116,31 @@ app.get('/recherche', async (req, res) => {
 
   try {
     const baseUrl = getBaseUrl(req);
-    const apiUrl = `https://api.dailymotion.com/videos?search=${encodeURIComponent(searchQuery)}&fields=id,title,url,thumbnail_480_url,owner.screenname&limit=${limit}&page=${page}`;
+    const apiUrl = `https://api.dailymotion.com/videos?search=${encodeURIComponent(searchQuery)}&fields=id,title,url,thumbnail_480_url,owner.screenname,duration&limit=${limit}&page=${page}`;
     
     const response = await axios.get(apiUrl);
     const videos = response.data.list;
     const hasMore = response.data.has_more || false;
     const total = response.data.total || videos.length;
 
+    const formatDuration = (seconds) => {
+      if (!seconds) return null;
+      const hrs = Math.floor(seconds / 3600);
+      const mins = Math.floor((seconds % 3600) / 60);
+      const secs = seconds % 60;
+      if (hrs > 0) {
+        return `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+      }
+      return `${mins}:${secs.toString().padStart(2, '0')}`;
+    };
+
     const resultats = videos.map(video => ({
       nom: video['owner.screenname'] || 'Inconnu',
       titre: video.title,
       image_url: video.thumbnail_480_url,
       video_url: video.url,
+      duree_secondes: video.duration || null,
+      duree_formatee: formatDuration(video.duration),
       download_url: `${baseUrl}/download?url_video=${encodeURIComponent(video.url)}&qualite=${QUALITE_DEFAUT}p`
     }));
 
@@ -363,21 +376,74 @@ app.get('/info', async (req, res) => {
     const baseUrl = getBaseUrl(req);
     const availableQualities = metadata.qualities ? Object.keys(metadata.qualities) : [];
 
+    const formatDuration = (seconds) => {
+      if (!seconds) return null;
+      const hrs = Math.floor(seconds / 3600);
+      const mins = Math.floor((seconds % 3600) / 60);
+      const secs = Math.floor(seconds % 60);
+      if (hrs > 0) {
+        return `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+      }
+      return `${mins}:${secs.toString().padStart(2, '0')}`;
+    };
+
+    const formatSize = (sizeBytes) => {
+      if (sizeBytes >= 1073741824) {
+        return `~${(sizeBytes / 1073741824).toFixed(2)} Go`;
+      } else if (sizeBytes >= 1048576) {
+        return `~${(sizeBytes / 1048576).toFixed(2)} Mo`;
+      } else {
+        return `~${(sizeBytes / 1024).toFixed(2)} Ko`;
+      }
+    };
+
+    const estimateVideoSize = (durationSeconds, quality) => {
+      if (!durationSeconds) return null;
+      const bitratesKbps = {
+        '1080': 4500,
+        '720': 2500,
+        '480': 1500,
+        '380': 1000,
+        '360': 800,
+        '240': 400,
+        'auto': 1500
+      };
+      const bitrate = bitratesKbps[quality] || 1000;
+      const sizeBytes = (bitrate * 1000 * durationSeconds) / 8;
+      return formatSize(sizeBytes);
+    };
+
+    const estimateMp3Size = (durationSeconds) => {
+      if (!durationSeconds) return null;
+      const sizeBytes = (192 * 1000 * durationSeconds) / 8;
+      return formatSize(sizeBytes);
+    };
+
+    const qualitiesWithSize = availableQualities.map(q => ({
+      qualite: q === 'auto' ? 'auto' : `${q}p`,
+      taille_estimee_mp4: estimateVideoSize(metadata.duration, q),
+      taille_estimee_mp3: estimateMp3Size(metadata.duration)
+    }));
+
     res.json({
       video_id: videoId,
       titre: metadata.title,
       owner: metadata.owner?.screenname,
-      duration: metadata.duration,
+      duree_secondes: metadata.duration,
+      duree_formatee: formatDuration(metadata.duration),
       thumbnail: metadata.poster_url,
-      qualites_disponibles: availableQualities,
+      qualites_disponibles: availableQualities.map(q => q === 'auto' ? 'auto' : `${q}p`),
+      qualites_details: qualitiesWithSize,
       types_disponibles: TYPES_DISPONIBLES,
       download_urls: {
         mp4: availableQualities.map(q => ({
           qualite: q === 'auto' ? 'auto' : `${q}p`,
+          taille_estimee: estimateVideoSize(metadata.duration, q),
           url: `${baseUrl}/download?url_video=${encodeURIComponent(videoUrl)}&qualite=${q === 'auto' ? 'auto' : q + 'p'}&type=MP4`
         })),
         mp3: availableQualities.map(q => ({
           qualite: q === 'auto' ? 'auto' : `${q}p`,
+          taille_estimee: estimateMp3Size(metadata.duration),
           url: `${baseUrl}/download?url_video=${encodeURIComponent(videoUrl)}&qualite=${q === 'auto' ? 'auto' : q + 'p'}&type=MP3`
         }))
       }
